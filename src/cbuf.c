@@ -1,3 +1,7 @@
+#include <assert.h>
+#include <stdlib.h>
+#include <string.h>
+
 #include "cbuf.h"
 
 #ifndef MALLOC
@@ -33,7 +37,7 @@ cbuf_t* cbuf_init(cbuf_t* self, const void* data, ssize_t length) {
 	if (length > 0) {
 		raw = crbuf_new(length);
 		if (data)
-			memcpy(raw->data, data);
+			memcpy(raw->data, data, length);
 	}
 	self->raw = raw;
 	self->start = 0;
@@ -67,12 +71,18 @@ cbuf_t* cbuf_fini(cbuf_t* self) {
 	return self;
 }
 
-ssize_t cbuf_length(cbufs_t* self) {
+ssize_t cbuf_length(cbuf_t* self) {
 	return self->end - self->start;
 }
 
-char* cbuf_base(cbufs_t* self, ssize_t n) {
+char* cbuf_base(cbuf_t* self) {
 	return self->raw ? self->raw->data + self->start : NULL;
+}
+
+char* cbuf_at(cbuf_t* self, ssize_t n) {
+	n += ((n < 0) ? self->end : self->start);
+	assert(n >= self->start && n <= self->end);
+	return self->raw ? self->raw->data + n: NULL;
 }
 
 void cbuf_swap(cbuf_t* self, cbuf_t* other) {
@@ -230,13 +240,14 @@ ssize_t cbuf_find(cbuf_t* self, int ch) {
 }
 
 struct cbufe_s {
-	struct cbuf_t buf;
-	cqueue_t qh;
+	cbuf_t buf;
+	cx_queue_t qh;
 };
 
 cbufs_t* cbufs_init(cbufs_t* self) {
 	self->length = 0;
 	cx_queue_init(&self->bufs);
+	return self;
 }
 
 cbufs_t* cbufs_fini(cbufs_t* self) {
@@ -259,6 +270,8 @@ ssize_t cbufs_length(cbufs_t* self) {
 }
 
 char* cbufs_base(cbufs_t* self, ssize_t n) {
+	// TODO
+	return NULL;
 }
 
 void cbufs_swap(cbufs_t* self, cbufs_t* other) {
@@ -285,7 +298,7 @@ void cbufs_push(cbufs_t* self, cbuf_t* buf, int transfer_reference) {
 				cbuf_fini(buf);
 		} else {
 			e = CX_NEW(MALLOC, struct cbufe_s, 0);
-			*e->buf = cbuf_ref(buf, transfer_reference);
+			e->buf = cbuf_ref(buf, transfer_reference);
 			cx_queue_push(&self->bufs, &e->qh);
 		}
 	}
@@ -301,7 +314,7 @@ void cbufs_push_front(cbufs_t* self, cbuf_t* buf, int transfer_reference) {
 				cbuf_fini(buf);
 		} else {
 			e = CX_NEW(MALLOC, struct cbufe_s, 0);
-			*e->buf = cbuf_ref(buf, transfer_reference);
+			e->buf = cbuf_ref(buf, transfer_reference);
 			cx_queue_push_front(&self->bufs, &e->qh);
 		}
 	}
@@ -383,7 +396,6 @@ ssize_t cbufs_shift_to_trunk(cbufs_t* self, ssize_t n, ctrunk_t* target) {
 	if (n > 0) {
 		ssize_t r = n;
 		cx_queue_t *q, *q2;
-		char* p = (char*)target;
 		cx_queue_each2(q, q2, &self->bufs) {
 			struct cbufe_s* e = CX_GET_SELF(q, struct cbufe_s, qh);
 			ssize_t l = e->buf.end - e->buf.start;
@@ -435,7 +447,7 @@ ssize_t cbufs_pop(cbufs_t* self, ssize_t n) {
 	return n;
 }
 
-ssize_t cbufs_find(cbuf_t* self, int ch) {
+ssize_t cbufs_find(cbufs_t* self, int ch) {
 	ssize_t r = 0;
 	cx_queue_t *q, *q2;
 	cx_queue_reach2(q, q2, &self->bufs) {
@@ -453,11 +465,11 @@ ctrunk_t* ctrunk_init(ctrunk_t* self, int cbufs) {
 	void* p = NULL;
 
 	if (cbufs > 0)
-		p = MALLOC((sizeof(uv_buf_t) + sizeof(struct crbuf_s)) * cbufs);
+		p = MALLOC((sizeof(cx_buf_t) + sizeof(struct crbuf_s*)) * cbufs);
 	self->cbufs = cbufs;
 	self->nbufs = 0;
 	self->length = 0;
-	self->bufs = (uv_buf_t*)p;
+	self->bufs = (cx_buf_t*)p;
 	return self;
 }
 
@@ -468,6 +480,8 @@ ctrunk_t* ctrunk_fini(ctrunk_t* self) {
 		self->bufs = NULL;
 		self->cbufs = 0;
 	}
+
+	return self;
 }
 
 ctrunk_t* ctrunk_clear(ctrunk_t* self) {
@@ -483,16 +497,18 @@ ctrunk_t* ctrunk_clear(ctrunk_t* self) {
 		self->nbufs = 0;
 		self->length = 0;
 	}
+
+	return self;
 }
 
 int ctrunk_push(ctrunk_t* self, cbuf_t* buf, int transfer_reference) {
-	struct crbuf_s* raws;
-	uv_buf_t* buf;
+	struct crbuf_s** raws;
+	cx_buf_t* b;
 
 	if (self->nbufs == self->cbufs) {
 		int cbufs = self->cbufs ? (self->cbufs * 2) : 4;
-		uv_buf_t* bufs = (cbuf_t*)REALLOC(self->bufs, (sizeof(uv_buf_t) + sizeof(struct crbuf_s)) * cbufs);
-		raws = (struct crbuf_s*)((void*)(bufs + cbufs));
+		cx_buf_t* bufs = (cx_buf_t*)REALLOC(self->bufs, (sizeof(cx_buf_t) + sizeof(struct crbuf_s*)) * cbufs);
+		raws = (struct crbuf_s**)((void*)(bufs + cbufs));
 		if (self->cbufs > 0) {
 			struct crbuf_s* old_raws = (struct crbuf_s*)((void*)(bufs + self->cbufs));
 			memmove(raws, old_raws, self->cbufs);
@@ -501,14 +517,14 @@ int ctrunk_push(ctrunk_t* self, cbuf_t* buf, int transfer_reference) {
 		self->bufs = bufs;
 		self->cbufs = cbufs;
 	} else {
-		raws = (struct crbuf_s*)((void*)(self->bufs + self->cbufs));
+		raws = (struct crbuf_s**)((void*)(self->bufs + self->cbufs));
 	}
 
-	buf = self->bufs + self->nbuf;
-	buf->base = cbuf_base(buf);
-	buf->len = cbuf_length(buf);
-	raws[self->nbuf] = buf->raw;
-	++self->nbuf;
+	b = self->bufs + self->nbufs;
+	b->base = cbuf_base(buf);
+	b->len = cbuf_length(buf);
+	raws[self->nbufs] = buf->raw;
+	++self->nbufs;
 
 	if (transfer_reference) {
 		buf->raw = NULL;
