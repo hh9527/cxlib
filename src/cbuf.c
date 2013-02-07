@@ -79,12 +79,6 @@ char* cbuf_base(cbuf_t* self) {
 	return self->raw ? self->raw->data + self->start : NULL;
 }
 
-char* cbuf_at(cbuf_t* self, ssize_t n) {
-	n += ((n < 0) ? self->end : self->start);
-	assert(n >= self->start && n <= self->end);
-	return self->raw ? self->raw->data + n: NULL;
-}
-
 void cbuf_swap(cbuf_t* self, cbuf_t* other) {
 	cbuf_t t = *self;
 	*self = *other;
@@ -270,7 +264,43 @@ ssize_t cbufs_length(cbufs_t* self) {
 }
 
 char* cbufs_base(cbufs_t* self, ssize_t n) {
-	// TODO
+	if (n > self->length)
+		return NULL;
+	if (n < 0)
+		n = self->length;
+	if (!cx_queue_empty(&self->bufs)) {
+		cx_queue_t* head = cx_queue_head(&self->bufs);
+		struct cbufe_s* e = CX_GET_SELF(head, struct cbufe_s, qh);
+		ssize_t l = (e->buf.end - e->buf.start);
+		if (l < n) {
+			ssize_t r = n;
+			struct cbufe_s* solid = CX_NEW(MALLOC, struct cbufe_s, 0);
+			cx_queue_t *q, *q2;
+			char* p = cbuf_init2(&solid->buf, n);
+			cx_queue_each2(q, q2, &self->bufs) {
+				e = CX_GET_SELF(head, struct cbufe_s, qh);
+				if (r >= l) {
+					cx_queue_remove0(q);
+					cbuf_copy(&e->buf, 0, l, p);
+					cbuf_fini(&e->buf);
+					FREE(e);
+					p += l;
+					r -= l;
+					if (r == 0)
+						break;
+				} else {
+					cbuf_copy(&e->buf, 0, r, p);
+					e->buf.start += r;
+				}
+			}
+
+			cx_queue_push_front(&self->bufs, &solid->qh);
+			e = solid;
+		}
+
+		return cbuf_base(&e->buf);
+	}
+
 	return NULL;
 }
 
@@ -279,6 +309,10 @@ void cbufs_swap(cbufs_t* self, cbufs_t* other) {
 	self->length = other->length;
 	other->length = length;
 	cx_queue_swap(&self->bufs, &other->bufs);
+}
+
+static inline int cbuf_is_solid(cbuf_t* a, cbuf_t* b) {
+	return (a->raw == b->raw && a->end == b->start);
 }
 
 void cbufs_concat(cbufs_t* self, cbufs_t* other) {
@@ -530,7 +564,7 @@ int ctrunk_push(ctrunk_t* self, cbuf_t* buf, int transfer_reference) {
 		buf->raw = NULL;
 		buf->start = buf->end = 0;
 	} else {
-		++buf->raw;
+		++buf->raw->rc;
 	}
 
 	return 0;
