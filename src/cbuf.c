@@ -85,6 +85,19 @@ void cbuf_swap(cbuf_t* self, cbuf_t* other) {
 	*other = t;
 }
 
+cbuf_t cbuf_ref(cbuf_t* self, int transfer_reference) {
+	if (transfer_reference) {
+		cbuf_t r = *self;
+		self->start = self->end = 0;
+		self->raw = NULL;
+		return r;
+	} else {
+		if (self->raw)
+			++self->raw->rc;
+		return *self;
+	}
+}
+
 cbuf_t cbuf_slice(cbuf_t* self, ssize_t start, ssize_t end, int transfer_reference) {
 	cbuf_t r = *self;
 	ssize_t length = self->end - self->start;
@@ -106,6 +119,8 @@ cbuf_t cbuf_slice(cbuf_t* self, ssize_t start, ssize_t end, int transfer_referen
 		if (transfer_reference) {
 			self->raw = NULL;
 			self->start = self->end = 0;
+		} else {
+			++self->raw->rc;
 		}
 	}
 
@@ -131,6 +146,8 @@ cbuf_t cbuf_mid(cbuf_t* self, ssize_t start, ssize_t n, int transfer_reference) 
 		if (transfer_reference) {
 			self->raw = NULL;
 			self->start = self->end = 0;
+		} else {
+			++self->raw->rc;
 		}
 	}
 

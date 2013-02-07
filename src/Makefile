@@ -1,12 +1,16 @@
 RM = rm -rf
-OBJECTS = cbuf.o
+TARGETS = cbuf.so
+OBJECTS = cbuf.o cbuf-lua.o
 
-all: $(OBJECTS)
+all: $(TARGETS)
 
 clean:
-	$(RM) $(OBJECTS)
+	$(RM) $(TARGETS) $(OBJECTS)
 
 .PHONY: all clean
 
-cbuf.o: cbuf.c
+cbuf.so: cbuf.o cbuf-lua.o
+	gcc -shared -o $@ $^ -llua
+
+%.o: %.c
 	gcc -W -Wall -c -o $@ $<

@@ -10,8 +10,8 @@ typedef struct ctrunk_s ctrunk_t;
 
 struct cbuf_s {
 	struct crbuf_s* raw;
-	ssize_t start;
-	ssize_t end;
+	int start;
+	int end;
 };
 
 #define CBUF_ZERO(x) {NULL, 0, 0}
