@@ -1,5 +1,13 @@
-local cbuf = require "cbuf"
-local b = cbuf.newbuf("abc")
-local bl = cbuf.newbufs()
+local cbuf = require "ll-cbuf"
+local b = cbuf.buf("abc")
+local bl = cbuf.bufs()
+print(package.path)
+print(package.cpath)
+print('type(b)', type(b))
+print('type(bl)', type(bl))
+cbuf.append(bl, b)
+cbuf.append(bl, b)
+cbuf.append(bl, b)
 print("#b", #b)
 print("#bl", #bl)
+print("b.tostring", cbuf.tostring(b))

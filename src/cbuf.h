@@ -52,11 +52,13 @@ CX_API void      cbufs_swap(cbufs_t* self, cbufs_t* other);
 CX_API void      cbufs_concat(cbufs_t* self, cbufs_t* other);
 CX_API void      cbufs_push(cbufs_t* self, cbuf_t* buf, int transfer_reference);
 CX_API void      cbufs_push_front(cbufs_t* self, cbuf_t* buf, int transfer_reference);
+CX_API ssize_t   cbufs_peek(cbufs_t* self, ssize_t n, cbuf_t* target);
 CX_API ssize_t   cbufs_shift(cbufs_t* self, ssize_t n, cbufs_t* target);
 CX_API ssize_t   cbufs_shift_to(cbufs_t* self, ssize_t n, void* target);
 CX_API ssize_t   cbufs_shift_to_trunk(cbufs_t* self, ssize_t n, ctrunk_t* target);
-CX_API ssize_t   cbufs_pop(cbufs_t* self, ssize_t n);
+CX_API void      cbufs_truncate(cbufs_t* self, ssize_t n);
 CX_API ssize_t   cbufs_find(cbufs_t* self, int ch);
+//CX_API void      cbufs_solidify(cbufs_t* self, ssize_t start, ssize_t end, cbuf_t* target);
 
 CX_API ctrunk_t* ctrunk_init(ctrunk_t* self, int cbufs);
 CX_API ctrunk_t* ctrunk_fini(ctrunk_t* self);

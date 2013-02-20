@@ -371,6 +371,32 @@ void cbufs_push_front(cbufs_t* self, cbuf_t* buf, int transfer_reference) {
 	}
 }
 
+ssize_t cbufs_peek(cbufs_t* self, ssize_t n, cbuf_t* target) {
+	if (self->length == 0) {
+		target->start = target->end = 0;
+		target->raw = NULL;
+		return 0;
+	} else {
+		cx_queue_t* head = cx_queue_head(&self->bufs);
+		struct cbufe_s* e = CX_GET_SELF(head, struct cbufe_s, qh);
+		int len = e->buf.end - e->buf.start;
+		if (n < 0 || n >= len) {
+			*target = e->buf;
+			cx_queue_remove0(head);
+			FREE(e);
+			self->length -= len;
+			return len;
+		} else {
+			target->raw = e->buf.raw;
+			target->start = e->buf.start;
+			target->end = e->buf.start + n;
+			e->buf.start += n;
+			self->length -= n;
+			return n;
+		}
+	}
+}
+
 ssize_t cbufs_shift(cbufs_t* self, ssize_t n, cbufs_t* target) {
 	if (n < 0 || n > self->length)
 		n = self->length;
@@ -472,11 +498,13 @@ ssize_t cbufs_shift_to_trunk(cbufs_t* self, ssize_t n, ctrunk_t* target) {
 	return n;
 }
 
-ssize_t cbufs_pop(cbufs_t* self, ssize_t n) {
-	if (n < 0 || n > self->length)
-		n = self->length;
-	if (n > 0) {
-		ssize_t r = n;
+void cbufs_truncate(cbufs_t* self, ssize_t at) {
+	ssize_t r = (at < 0) ? -at : self->length - at;
+	if (r <= 0) {
+		// do nothing
+	} else if (r == self->length) {
+		cbufs_fini(self);
+	} else {
 		cx_queue_t *q, *q2;
 		cx_queue_reach2(q, q2, &self->bufs) {
 			struct cbufe_s* e = CX_GET_SELF(q, struct cbufe_s, qh);
@@ -494,8 +522,6 @@ ssize_t cbufs_pop(cbufs_t* self, ssize_t n) {
 			}
 		}
 	}
-
-	return n;
 }
 
 ssize_t cbufs_find(cbufs_t* self, int ch) {
